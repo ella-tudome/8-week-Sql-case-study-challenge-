@@ -1,4 +1,4 @@
-#🍜 Case Study #1 Danny's Diner
+# 🍜 Case Study #1 Danny's Diner
 
 ![image](https://user-images.githubusercontent.com/102882589/162623996-6db62591-700f-46ae-bad1-5ee8a87aa563.png)
 
