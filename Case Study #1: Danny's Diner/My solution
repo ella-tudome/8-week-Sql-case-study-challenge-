@@ -1,0 +1,358 @@
+
+---------------------------------------------------------------------------------
+-- 1.What is the total amount each customer spent at the restaurant?
+select 
+  customer_id, 
+  sum(price) 
+from 
+  sales s 
+  join menu m on s.product_id = m.product_id 
+group by 
+  customer_id 
+order by 
+  customer_id
+  
+  customer_id|sum|
+-----------+---+
+A          | 76|
+B          | 74|
+C          | 36|
+
+ ---------------------------------------------------------------------------------
+  --2. How many days has each customer visited the restaurant?
+select 
+  customer_id, 
+  count(distinct order_date) 
+from 
+  sales 
+group by 
+  customer_id 
+  
+ customer_id|count|
+-----------+-----+
+A          |    4|
+B          |    6|
+C          |    2|
+
+  --------------------------------------------------------
+  --3 What was the first item from the menu purchased by each customer?
+  with f_order as(
+    select 
+      customer_id, 
+      product_name, 
+      rank() over (
+        partition by customer_id 
+        order by 
+          order_date
+      ) as rank_no 
+    from 
+      sales s 
+      join menu m on s.product_id = m.product_id
+  ) 
+select 
+  distinct customer_id, 
+  product_name 
+from 
+  f_order 
+where 
+  rank_no = 1
+  
+  customer_id|product_name|
+-----------+------------+
+A          |curry       |
+A          |sushi       |
+B          |curry       |
+C          |ramen       |
+  ----------------------------------------------------------
+  --4. What is the most purchased item on the menu and how many times was it purchased by all customers?
+select 
+  product_name, 
+  count(product_name) 
+from 
+  sales s 
+  join menu m on s.product_id = m.product_id 
+group by 
+  product_name 
+limit 1 
+
+product_name|count|
+------------+-----+
+ramen       |    8|
+  -------------------------------------------------------
+  --5. Which item was the most popular for each customer?
+select 
+  customer_id, 
+  string_agg(product_name, ',') as prod_name
+from 
+  (
+    with prod_name as (
+      select 
+        distinct customer_id, 
+        product_name, 
+        count(m.product_id) over (
+          partition by customer_id, product_name
+        ) as cou_nt 
+      from 
+        sales s 
+        join menu m on s.product_id = m.product_id
+    ) 
+    select 
+      *, 
+      dense_rank() over (
+        partition by customer_id 
+        order by 
+          cou_nt
+      ) as rank 
+    from 
+      prod_name
+  ) sub 
+where 
+  sub.rank = 1 
+group by 
+  sub.customer_id 
+  
+ customer_id|prod_name       |
+-----------+-----------------+
+A          |sushi            |
+B          |sushi,curry,ramen|
+C          |ramen            | 
+  -----------------------------------------------------
+  
+  --6. Which item was purchased first by the customer after they became a member?
+select 
+  customer_id, 
+  product_name 
+from 
+  (
+    with mem_date as (
+      select 
+        s.customer_id, 
+        order_date, 
+        product_name, 
+        join_date 
+      from 
+        sales s 
+        join menu m on s.product_id = m.product_id 
+        join members mb on s.customer_id = mb.customer_id 
+      where 
+        order_date >= join_date 
+      order by 
+        customer_id, 
+        order_date
+    ) 
+    select 
+      *, 
+      row_number() over (partition by customer_id) as r_num 
+    from 
+      mem_date
+  ) sub 
+where 
+  r_num = 1 
+  
+customer_id|product_name|
+-----------+------------+
+A          |curry       |
+B          |sushi       |
+  ------------------------------------------------
+  -- 7. Which item was purchased just before the customer became a member? 
+select 
+  customer_id, 
+  product_name 
+from 
+  (
+    with b_mem as(
+      select 
+        s.customer_id, 
+        order_date, 
+        product_name, 
+        join_date 
+      from 
+        sales s 
+        join menu m on s.product_id = m.product_id 
+        join members mb on s.customer_id = mb.customer_id 
+      where 
+        order_date < join_date
+    ) 
+    select 
+      *, 
+      row_number() over (
+        partition by customer_id 
+        order by 
+          order_date desc
+      ) as r_num 
+    from 
+      b_mem
+  ) sub 
+where 
+  r_num = 1 
+  
+ customer_id|product_name|
+-----------+------------+
+A          |sushi       |
+B          |sushi       |
+  ------------------------------------------------
+  --8 What is the total items and amount spent for each member before they became a member?
+  with b_mem as(
+    select 
+      s.customer_id, 
+      order_date, 
+      price 
+    from 
+      sales s 
+      join menu m on s.product_id = m.product_id 
+      join members mb on s.customer_id = mb.customer_id 
+    where 
+      order_date < join_date
+  ) 
+select 
+  customer_id, 
+  count(product_name), 
+  sum(price) 
+from 
+  b_mem 
+group by 
+customer_id 
+ ------------------------------------------------------- 
+  --9   If each $1 spent equates to 10 points and sushi has a 2x points multiplier --how many points would each customer have?
+  with point_sys as (
+    select 
+      customer_id, 
+      product_name, 
+      price, 
+      case when product_name = 'sushi' then 20 * price else 10 * PRICE end as cond 
+    from 
+      sales s 
+      join menu m on s.product_id = m.product_id
+  ) 
+select 
+  customer_id, 
+  SUM(cond) as point 
+from 
+  point_sys 
+group by 
+  customer_id 
+order by 
+  customer_id ,
+  point desc
+  
+customer_id|point|
+-----------+-----+
+A          |  860|
+B          |  940|
+C          |  360|
+  ---------------------------------------------
+  --10 In the first week after a customer joins the program (including their join date) they earn 2x points on all items, 
+  --     not just sushi - how many points do customer A and B have at the end of January?
+  with mem_point as (
+    select 
+      s.customer_id, 
+      order_date, 
+      product_name, 
+      price, 
+      join_date, 
+      case when order_date between join_date 
+      and join_date + interval '6 days' then 20 * price else 10 * price end as cond 
+    from 
+      sales s 
+      join menu m on s.product_id = m.product_id 
+      join members mb on s.customer_id = mb.customer_id
+  ) 
+select 
+  customer_id, 
+  sum(cond) 
+from 
+  mem_point 
+where 
+  extract(
+    month 
+    from 
+      order_date
+  ) = 1 
+group by 
+  customer_id
+ order by 
+  customer_id 
+  
+customer_id|sum |
+-----------+----+
+A          |1270|
+B          | 720|
+  
+  ------------------------------------
+  -- BONUS QUESTION 1; Join All The Things
+  create table joined as 
+select 
+  s.customer_id, 
+  product_name, 
+  price, 
+  case when order_date >= join_date then 'Y' else 'N' end as member 
+from 
+  sales s 
+  left join menu m on s.product_id = m.product_id 
+  left join members mb on s.customer_id = mb.customer_id 
+  
+select * from  joined 
+customer_id|product_name|price|member|
+-----------+------------+-----+------+
+A          |curry       |   15|Y     |
+A          |ramen       |   12|Y     |
+A          |ramen       |   12|Y     |
+A          |ramen       |   12|Y     |
+A          |sushi       |   10|N     |
+A          |curry       |   15|N     |
+B          |sushi       |   10|N     |
+B          |sushi       |   10|Y     |
+B          |curry       |   15|N     |
+B          |curry       |   15|N     |
+B          |ramen       |   12|Y     |
+B          |ramen       |   12|Y     |
+C          |ramen       |   12|N     |
+C          |ramen       |   12|N     |
+C          |ramen       |   12|N     |  
+
+
+  
+  BONUS QUESTION 2; Rank All The Things
+  
+  
+  create table ranked as with gen_table as (
+    select 
+      s.customer_id, 
+      product_name, 
+      price, 
+      order_date, 
+      case when order_date >= join_date then 'Y' else 'N' end as member 
+    from 
+      sales s 
+      left join menu m on s.product_id = m.product_id 
+      left join members mb on s.customer_id = mb.customer_id
+  ) 
+select 
+  *, 
+  case when member = 'Y' then RANK() over (
+    partition by customer_id, 
+    member 
+    order by 
+      order_date
+  ) else null end as RANKING 
+from 
+  gen_table
+  
+  select * from ranked
+customer_id|product_name|price|order_date|member|ranking|
+-----------+------------+-----+----------+------+-------+
+A          |sushi       |   10|2021-01-01|N     |       |
+A          |curry       |   15|2021-01-01|N     |       |
+A          |curry       |   15|2021-01-07|Y     |      1|
+A          |ramen       |   12|2021-01-10|Y     |      2|
+A          |ramen       |   12|2021-01-11|Y     |      3|
+A          |ramen       |   12|2021-01-11|Y     |      3|
+B          |curry       |   15|2021-01-01|N     |       |
+B          |curry       |   15|2021-01-02|N     |       |
+B          |sushi       |   10|2021-01-04|N     |       |
+B          |sushi       |   10|2021-01-11|Y     |      1|
+B          |ramen       |   12|2021-01-16|Y     |      2|
+B          |ramen       |   12|2021-02-01|Y     |      3|
+C          |ramen       |   12|2021-01-01|N     |       |
+C          |ramen       |   12|2021-01-01|N     |       |
+C          |ramen       |   12|2021-01-07|N     |       |
