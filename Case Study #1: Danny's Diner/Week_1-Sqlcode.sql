@@ -106,44 +106,40 @@ LIMIT 1
  
   -------------------------------------------------------
   --5. Which item was the most popular for each customer?
-  SELECT
+WITH prod_name AS (
+SELECT
+		customer_id,
+		product_name,
+		count(m.product_id) AS cou_nt,
+		DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY count(m.product_id)) AS rank
+FROM
+		sales s
+JOIN menu m ON
+		s.product_id = m.product_id
+GROUP BY
+	customer_id,
+	m.product_name
+		)
+		SELECT
 	customer_id,
 	string_agg(product_name, ',')
 FROM
-	(
-    WITH prod_name AS (
-	SELECT
-		DISTINCT customer_id,
-		product_name,
-		count(m.product_id) OVER (PARTITION BY customer_id, product_name) AS cou_nt
-	FROM
-		sales s
-	JOIN menu m ON
-		s.product_id = m.product_id
-    )
-	SELECT
-		*,
-		DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY cou_nt DESC) AS RANK
-	FROM
 		prod_name
-  ) sub
 WHERE
-	sub.rank = 1
+	prod_name.rank = 1
 GROUP BY
-	sub.customer_id
+	customer_id
+	
  -----------------------------------------------------
   
   --6. Which item was purchased first by the customer after they became a member?
-SELECT
-	customer_id,
-	product_name
-FROM
-	(WITH mem_order AS (
+WITH mem_order AS (
 	SELECT
 		s.customer_id,
 		order_date,
 		join_date,
-		product_name
+		product_name,
+	    ROW_NUMBER() OVER (PARTITION BY s.customer_id)
 	FROM
 		sales s
 	JOIN menu m ON
@@ -154,27 +150,22 @@ FROM
 		order_date >= join_date
 	ORDER BY
 		s.customer_id)
-	SELECT
-		*,
-		ROW_NUMBER() OVER (PARTITION BY customer_id)
-	FROM
-		mem_order) sub
-where
+		SELECT customer_id ,product_name 
+		FROM
+		mem_order
+		where
 	row_number = 1
   
   ------------------------------------------------
   -- 7. Which item was purchased just before the customer became a member? 
-SELECT
-	customer_id,
-	product_name
-FROM 
-	(WITH before_mem AS (
+WITH before_mem AS (
 	SELECT
 		s.customer_id,
 		order_date,
 		join_date,
-		product_name
-	FROM
+		product_name,
+	ROW_NUMBER () OVER (PARTITION BY s.customer_id)
+	FROM 
 		sales s
 	JOIN menu m ON
 		s.product_id = m.product_id
@@ -186,10 +177,10 @@ FROM
 		s.customer_id,
 		order_date DESC)
 	SELECT
-		* ,
-		ROW_NUMBER () OVER (PARTITION BY customer_id)
+		customer_id, 
+		product_name
 	FROM
-		before_mem) sub
+		before_mem
 WHERE
 		ROW_NUMBER = 1
   ------------------------------------------------
